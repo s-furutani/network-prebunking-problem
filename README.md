@@ -2,7 +2,7 @@
 This repository contains the source code for ""
 
 ## Code 
-To reproduce our main results (Fig. 2), please type the following commands:
+To reproduce our main results (Fig. 2), please type the following command:
 
 ```
 python main_real.py
@@ -13,7 +13,7 @@ When the code is executed, a directory `results_real/{graph_name}/` is created, 
 The results can be viewed in `plot_results.ipynb`.
 
 ## Citation
-If you find this repository useful, please cite the following paper
+If you find this repository useful, please cite the following paper:
 
 ```
 TBA
