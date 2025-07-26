@@ -1,4 +1,4 @@
-# Network Prebunking Problem: Optimizing Prebunking Targets to Suppress the Spread of Misinformation in Social Networks
+# Network Prebunking Problem
 This repository contains the source code for "Network Prebunking Problem: Optimizing Prebunking Targets to Suppress the Spread of Misinformation in Social Networks"
 
 ## Code 
