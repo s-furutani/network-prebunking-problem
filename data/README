@@ -1,5 +1,5 @@
 
-Please unzip politifact.zip and gossipcop.zip before experiments.
+The politifact & gossipcop datasets are from GNN-FakeNews repository (https://github.com/safe-graph/GNN-FakeNews)
 
-All datasets (except for politifact & gossipcop) are from the Stanford Large Network Dataset Collection (https://snap.stanford.edu/data/)
+Other social network datasets are from the Stanford Large Network Dataset Collection (https://snap.stanford.edu/data/)
 
