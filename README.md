@@ -58,8 +58,8 @@ The following algorithms are implemented and compared:
 - **Distance**: Distance-based selection
 - **Gullible**: Susceptibility-based selection
 - **MIA-NPP**: Our proposed algorithm
-- **CMIA-O**: Comparative algorithm
-- **AdvancedGreedy**: Greedy algorithm with sampling
+- **CMIA-O**: Approximation algorithm for the Influence Blocking Maximization problem
+- **AdvancedGreedy**: Approximation algorithm for the Influence Minimization problem
 
 ## Citation
 If you find this repository useful, please cite the following paper:
