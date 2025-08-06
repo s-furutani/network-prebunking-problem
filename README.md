@@ -4,8 +4,8 @@ This repository contains datasets and source codes for "Network Prebunking Probl
 ## Code 
 This repository provides a unified interface for running different types of experiments through `main.py`. The code supports three types of experiments:
 
-### Real Graph Experiments
-To reproduce our main results (Fig. 2) with real social network data:
+### Real Network Experiments (Fig. 2)
+To reproduce our main results with politifact and gossipcop networks:
 
 ```bash
 python main.py --type real --graph politifact
@@ -13,21 +13,21 @@ python main.py --type real --graph politifact
 python main.py --type real --graph gossipcop
 ```
 
-### Synthetic Graph Experiments
-To run experiments with synthetic networks:
-
-```bash
-python main.py --type synthetic --graph ca_HepTh
-# Available synthetic graphs: ca_HepTh, Facebook, WikiVote, LastFM, Deezer, Enron, Epinions, Twitter
-```
-
-### Uncertainty Analysis Experiments
-To run experiments with uncertainty in node susceptibility:
+### Uncertainty Analysis Experiments (Fig. 4)
+To run experiments with uncertainty in node susceptibility and intervention effect:
 
 ```bash
 python main.py --type uncertain --graph politifact
 # or
 python main.py --type uncertain --graph gossipcop
+```
+
+### Other Social Network Experiments (Fig. 7)
+To run experiments with real social networks with synthetic parameters:
+
+```bash
+python main.py --type synthetic --graph ca_HepTh
+# Available synthetic graphs: ca_HepTh, Facebook, WikiVote, LastFM, Deezer, Enron, Epinions, Twitter
 ```
 
 ### Additional Parameters
