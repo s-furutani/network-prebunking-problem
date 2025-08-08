@@ -1,5 +1,5 @@
 # Network Prebunking Problem
-This repository contains datasets and source codes for "Network Prebunking Problem: Optimizing Prebunking Targets to Suppress the Spread of Misinformation in Social Networks"
+This repository contains datasets and source codes for our paper entitled "Network Prebunking Problem: Optimizing Prebunking Targets to Suppress the Spread of Misinformation in Social Networks"
 
 ## Code 
 This repository provides a unified interface for running different types of experiments through `main.py`. The code supports three types of experiments:
@@ -39,7 +39,7 @@ python main.py --type synthetic --graph ca_HepTh --kmax 100 --theta 0.01 --mu_ep
 
 Available parameters:
 - `--kmax`: Maximum number of intervention nodes (default: 200)
-- `--theta`: Threshold for algorithm convergence (default: 0.001)
+- `--theta`: Influence threshold for constructing MIIAs and MIOAs (default: 0.001)
 - `--mu_eps`: Mean of epsilon distribution (default: 0.5)
 - `--sigma_eps`: Standard deviation of epsilon distribution (default: 0.1)
 - `--mu_q`: Mean of q distribution (synthetic only, default: 0.7)
