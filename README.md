@@ -58,10 +58,10 @@ The following algorithms are implemented and compared:
 - **Degree**: Degree-based selection
 - **Distance**: Distance-based selection
 - **Gullible**: Susceptibility-based selection
-- **MIA-NPP**: Our proposed algorithm
+- **CELF**: Greedy selection based on the CELF implementation
 - **CMIA-O**: Approximation algorithm for the IBM problem based on the MIA framework
 - **AdvancedGreedy**: Approximation alogorithm for the IMIN problem based on the dominator tree and graph sampling
-- **CELF**: Greedy selection based on the CELF implementation
+- **MIA-NPP**: Our proposed algorithm
 
 ## Citation
 If you find this repository useful, please cite the following paper:
