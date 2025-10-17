@@ -1,3 +1,4 @@
+from re import A
 import time
 import random
 import networkx as nx
@@ -7,7 +8,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from functools import wraps
 import warnings
-
+import simulation
 
 #################################################################
 #                          utility
@@ -396,7 +397,7 @@ def MIA_NPP(graph, S, k, theta):
     for s in S:
         mioa_s = get_MIOA(graph, s, theta)
         U = U | set(mioa_s.nodes())
-    U = U - S
+    print(f'U={len(U)}, S={len(S)}')
 
     print("constructing all MIIAs in U")
     miia = get_all_MIIAs_in_U(graph, S, U, theta)
@@ -848,6 +849,78 @@ def AdvancedGreedy(graph, S, k, num_samples):
 #################################################################
 #                         Baseline
 #################################################################
+
+
+def MC_simulation(graph, S, X, num_mc_samples=1000):
+    q_X = {node: get_qX(node, X, graph) for node in graph.nodes()}
+    ave_correct_spread = 0
+    for seed in range(num_mc_samples):
+        rng = np.random.default_rng(seed)
+        fin_p, fin_n = simulation.run_ICN(graph, S, q_X, rng)
+        ave_correct_spread += len(fin_n)
+    ave_correct_spread = ave_correct_spread / num_mc_samples
+    return ave_correct_spread
+
+@measure_time
+def Greedy(graph, S, k, num_mc_samples):
+    V = set(graph.nodes())
+    S = set(S)
+    X = []
+    for _ in tqdm(range(k), desc='Greedy'):
+        best_gain = -9999999
+        best_v = None
+        f_SX = MC_simulation(graph, S, X, num_mc_samples)
+        for v in V - set(X):
+            f_SXv = MC_simulation(graph, S, X + [v], num_mc_samples)
+            gain_v = f_SXv - f_SX
+            if gain_v > best_gain:
+                best_gain = gain_v
+                best_v = v
+        X.append(best_v)
+        # print(f'best_v: {best_v}, best_gain: {best_gain}')    
+    return X
+
+@measure_time
+def CELF(graph, S, k, num_mc_samples):
+    # Note:
+    # CELF can be slow on large graphs, as it repeatedly evaluates marginal gains using Monte Carlo simulations. 
+    # Moreover, because of the small intervention effects (q_v → (1 - ε_v)q_v), 
+    # the marginal gain Δ_v becomes tiny and can be buried in Monte Carlo noise. 
+    V = set(graph.nodes())
+    S = set(S)
+    X = []
+    gains = []
+    nodes = []
+
+    f_SX = MC_simulation(graph, S, X, num_mc_samples)
+    for v in tqdm(V, desc='initial calculation'):
+        f_SXv = MC_simulation(graph, S, X + [v], num_mc_samples)
+        gain_v = f_SXv - f_SX
+        gains.append(gain_v)
+        nodes.append(v)
+    Q = sorted(zip(nodes, gains), key=lambda x: x[1], reverse=True)
+    best_v = Q[0][0]
+    best_gain = Q[0][1]
+    X.append(best_v)
+    Q = Q[1:]
+    
+    for _ in tqdm(range(k-1), desc='CELF'):
+        check = False
+        f_SX = f_SX + best_gain
+        while not check:
+            current_v = Q[0][0]
+            f_SXv = MC_simulation(graph, S, X + [current_v], num_mc_samples)
+            gain_v = f_SXv - f_SX
+            Q[0] = (current_v, gain_v)
+            Q = sorted(Q, key=lambda x: x[1], reverse=True)
+            check = (Q[0][0] == current_v)
+        best_v = Q[0][0]
+        best_gain = Q[0][1]
+        X.append(best_v)
+        Q = Q[1:]
+        # print(f'best_v: {best_v}, best_gain: {best_gain}')    
+    return X
+
 
 @measure_time
 def BaselineRandom(graph, S, k):

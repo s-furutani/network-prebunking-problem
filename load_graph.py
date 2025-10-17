@@ -118,6 +118,31 @@ def Twitter_graph():
     graph = graph.subgraph(lwcc)
     return graph, 'Twitter'
 
+def Congress_network():
+    graph = nx.read_edgelist('data/congress_network/congress.edgelist', create_using=nx.DiGraph(), data=True)
+    lwcc = max(nx.weakly_connected_components(graph), key=len)
+    graph = graph.subgraph(lwcc)
+    return graph, 'Congress'
+
+def Reed98_network():
+    edges = []
+    with open('data/socfb-Reed98.mtx', 'r') as file:
+        for line in file:
+            line = line.strip()
+            if line.startswith('%') or not line:
+                continue
+            parts = line.split()
+            if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit() and parts[2].isdigit():
+                continue
+            if len(parts) >= 2:
+                edges.append((parts[0], parts[1]))
+    
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
+    lwcc = max(nx.connected_components(graph), key=len)
+    graph = graph.subgraph(lwcc)
+    graph = graph.to_directed()
+    return graph, 'Reed98'
 
 # for i in range(9):
 #     g = graphs[i]

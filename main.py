@@ -17,15 +17,21 @@ import load_graph
 import algorithm
 import simulation
 
-def embed_model_parameters(graph, q, epsilon, is_synthetic=False):
+def embed_model_parameters(graph, graph_name, q, epsilon, is_synthetic=False):
     """Embed model parameters into the graph"""
     if is_synthetic:
-        graph = graph.to_directed()
-        d_in = graph.in_degree()
-        for u, v in graph.edges():
-            pe = 1./d_in[v]
-            graph[u][v]['p_e'] = pe
-            graph[u][v]['-logp'] = - np.log(pe)
+        if graph_name == 'Congress':
+            for u, v in graph.edges():
+                pe = graph[u][v]['weight']
+                graph[u][v]['p_e'] = pe
+                graph[u][v]['-logp'] = - np.log(pe)
+        else:
+            graph = graph.to_directed()
+            d_in = graph.in_degree()
+            for u, v in graph.edges():
+                pe = 1./d_in[v]
+                graph[u][v]['p_e'] = pe
+                graph[u][v]['-logp'] = - np.log(pe)
     
     for v in graph.nodes():
         graph.nodes[v]['q'] = q[v]
@@ -59,7 +65,7 @@ def get_truncated_normal(mu, sigma, lower=0, upper=1):
     a, b = (lower - mu) / sigma, (upper - mu) / sigma
     return truncnorm.rvs(a, b, loc=mu, scale=sigma)
 
-def run_real_experiment(graph_name, kmax=200, theta=0.001, mu_eps=0.5, sigma_eps=0.1):
+def run_real_experiment(graph_name, kmax=200, theta=0.001, mu_eps=0.5, sigma_eps=0.1, num_mc_samples=5000):
     """Run experiment with real graph data"""
     print(f'Running real experiment with graph: {graph_name}')
     
@@ -72,15 +78,15 @@ def run_real_experiment(graph_name, kmax=200, theta=0.001, mu_eps=0.5, sigma_eps
     np.random.seed(42)
 
     epsilon = {node: get_truncated_normal(mu_eps, sigma_eps) for node in graph.nodes}
-    graph = embed_model_parameters(graph, q, epsilon, is_synthetic=False)
+    graph = embed_model_parameters(graph, graph_name, q, epsilon, is_synthetic=False)
 
     print(f'graph: {graph_name}, seed node: {S}, epsilon ~ truncN({mu_eps}, {sigma_eps})')
     
     directory = f'results_real/{graph_name}/'
-    run_algorithms(graph, S, kmax, theta, directory)
-    run_simulation(graph, S, kmax, directory)
+    run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=num_mc_samples)
+    run_simulation(graph, S, kmax, directory, num_mc_samples=num_mc_samples)
 
-def run_synthetic_experiment(graph_name, kmax=200, theta=0.001, mu_q=0.7, sigma_q=0.3, mu_eps=0.5, sigma_eps=0.1, num_seeds=5):
+def run_synthetic_experiment(graph_name, kmax=200, theta=0.001, mu_q=0.7, sigma_q=0.3, mu_eps=0.5, sigma_eps=0.1, num_seeds=5, num_mc_samples=5000):
     """Run experiment with synthetic graph data"""
     print(f'Running synthetic experiment with graph: {graph_name}')
     
@@ -101,6 +107,10 @@ def run_synthetic_experiment(graph_name, kmax=200, theta=0.001, mu_q=0.7, sigma_
         graph, graph_name = load_graph.Epinions_graph()
     elif graph_name == 'Twitter':
         graph, graph_name = load_graph.Twitter_graph()
+    elif graph_name == 'Congress':
+        graph, graph_name = load_graph.Congress_network()
+    elif graph_name == 'Reed98':
+        graph, graph_name = load_graph.Reed98_network()
     else:
         raise ValueError(f"Unknown synthetic graph: {graph_name}")
 
@@ -111,19 +121,22 @@ def run_synthetic_experiment(graph_name, kmax=200, theta=0.001, mu_q=0.7, sigma_
 
     q = {node: get_truncated_normal(mu_q, sigma_q) for node in graph.nodes()}
     epsilon = {node: get_truncated_normal(mu_eps, sigma_eps) for node in graph.nodes}
+    # q = {node: 1 if random.random() < 0.7 else 0 for node in graph.nodes}
+    # epsilon = {node: 1 for node in graph.nodes}
     for s in S:
         q[s] = 1.0
+        epsilon[s] = 0.0
 
-    graph = embed_model_parameters(graph, q, epsilon, is_synthetic=True)
+    graph = embed_model_parameters(graph, graph_name, q, epsilon, is_synthetic=True)
 
-    print(f'graph: {graph_name}, seed node: {S}, q ~ truncN({mu_q}, {sigma_q}), epsilon ~ truncN({mu_eps}, {sigma_eps})')
+    print(f'graph: {graph_name}, n={len(graph.nodes())}, m={len(graph.edges())}, seed node: {S}, q ~ truncN({mu_q}, {sigma_q}), epsilon ~ truncN({mu_eps}, {sigma_eps})')
     
     directory = f'results_synthetic/{graph_name}/'
-    run_algorithms(graph, S, kmax, theta, directory)
-    run_simulation(graph, S, kmax, directory)
+    run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=num_mc_samples)
+    run_simulation(graph, S, kmax, directory, num_mc_samples=num_mc_samples)
 
 def run_uncertain_experiment(graph_name, kmax=200, theta=0.001, mu_eps=0.5, sigma_eps=0.1):
-    """Run experiment with uncertainty in node susceptibility"""
+    """Run experiment with uncertainty in node susceptibility and intervention effect"""
     print(f'Running uncertain experiment with graph: {graph_name}')
     
     graph = load_real_graph.FakeNewsNet_interaction_network(graph_name)
@@ -138,7 +151,7 @@ def run_uncertain_experiment(graph_name, kmax=200, theta=0.001, mu_eps=0.5, sigm
     epsilon_ate = {node: mu_eps for node in graph.nodes}
 
     graph_copy = graph.copy()
-    graph_truth = embed_model_parameters(graph_copy, q, epsilon, is_synthetic=False)
+    graph_truth = embed_model_parameters(graph_copy, graph_name, q, epsilon, is_synthetic=False)
 
     print(f'graph: {graph_name}, seed node: {S}, epsilon ~ truncN({mu_eps}, {sigma_eps})')
     
@@ -155,7 +168,7 @@ def run_uncertain_experiment(graph_name, kmax=200, theta=0.001, mu_eps=0.5, sigm
         q_noise['root'] = 1.0
 
         graph_copy = graph.copy()
-        graph_noise = embed_model_parameters(graph_copy, q_noise, epsilon_ate, is_synthetic=False)
+        graph_noise = embed_model_parameters(graph_copy, graph_name, q_noise, epsilon_ate, is_synthetic=False)
 
         X = algorithm.MIA_NPP(graph_noise, S, kmax, theta)
         write_data(directory, f'MIA-NPP (sig_delta={int(sig * 10):02d})', X)
@@ -166,11 +179,11 @@ def run_uncertain_experiment(graph_name, kmax=200, theta=0.001, mu_eps=0.5, sigm
         path = directory + alg_name + '.npy'
         if os.path.exists(path):
             X = np.load(path, allow_pickle=True)
-            results = simulation.run_simulation(graph_truth, S, X, kmax)
+            results = simulation.run_ICN_simulation(graph_truth, S, X, kmax)
             filename = alg_name + '_sim_results'
             write_data(directory, filename, results)
 
-def run_algorithms(graph, S, kmax, theta, directory):
+def run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=5000):
     """Run all algorithms"""
     print('computing prebunking node set X')
     
@@ -198,6 +211,11 @@ def run_algorithms(graph, S, kmax, theta, directory):
     print('MIA-NPP:')
     X = algorithm.MIA_NPP(graph, S, kmax, theta)
     write_data(directory, 'MIA-NPP', X)
+
+    # CELF
+    print(f'CELF_{num_mc_samples}:')
+    X = algorithm.CELF(graph, S, kmax, num_mc_samples)
+    write_data(directory, f'CELF_{num_mc_samples}', X)
     
     # CMIA-O
     print('CMIA-O:')
@@ -210,16 +228,17 @@ def run_algorithms(graph, S, kmax, theta, directory):
     X = algorithm.AdvancedGreedy(graph, S, kmax, num_samples)
     write_data(directory, 'AdvancedGreedy', X)
 
-def run_simulation(graph, S, kmax, directory):
+def run_simulation(graph, S, kmax, directory, num_mc_samples=5000):
     """Run simulation for all algorithms"""
     print('conducting simulation')
     
     alg_names = ['MIA-NPP', 'CMIA-O', 'AdvancedGreedy', 'Distance', 'Degree', 'Gullible', 'Random']
+    # alg_names = [f'CELF_{num_mc_samples}', 'MIA-NPP']
     for alg_name in tqdm(alg_names):
         path = directory + alg_name + '.npy'
         if os.path.exists(path):
             X = np.load(path, allow_pickle=True)
-            results = simulation.run_simulation(graph, S, X, kmax)
+            results = simulation.run_ICN_simulation(graph, S, X, kmax)
             filename = alg_name + '_sim_results'
             write_data(directory, filename, results)
 
@@ -236,16 +255,16 @@ def main():
     parser.add_argument('--mu_q', type=float, default=0.7, help='Mean of q distribution (synthetic only)')
     parser.add_argument('--sigma_q', type=float, default=0.3, help='Standard deviation of q distribution (synthetic only)')
     parser.add_argument('--num_seeds', type=int, default=5, help='Number of seed nodes (synthetic only)')
-    
+    parser.add_argument('--num_mc_samples', type=int, default=5000, help='Number of MC samples for CELF')
     args = parser.parse_args()
     
     print('****' * 10)
     print('')
     
     if args.type == 'real':
-        run_real_experiment(args.graph, args.kmax, args.theta, args.mu_eps, args.sigma_eps)
+        run_real_experiment(args.graph, args.kmax, args.theta, args.mu_eps, args.sigma_eps, args.num_mc_samples)
     elif args.type == 'synthetic':
-        run_synthetic_experiment(args.graph, args.kmax, args.theta, args.mu_q, args.sigma_q, args.mu_eps, args.sigma_eps, args.num_seeds)
+        run_synthetic_experiment(args.graph, args.kmax, args.theta, args.mu_q, args.sigma_q, args.mu_eps, args.sigma_eps, args.num_seeds, args.num_mc_samples)
     elif args.type == 'uncertain':
         run_uncertain_experiment(args.graph, args.kmax, args.theta, args.mu_eps, args.sigma_eps)
     

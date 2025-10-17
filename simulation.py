@@ -1,7 +1,10 @@
 import numpy as np
 import random
 
-def run_ICN(graph, S, q):
+def run_ICN(graph, S, q, rng=None):
+    if rng is None:
+        seed = np.random.SeedSequence().entropy
+        rng = np.random.default_rng(int(seed))
     node_status = {node: 0 for node in graph.nodes()}  # node activation status (0: inactive, 1: positive, 2: negative) 
     for s in S:
         node_status[s] = 1
@@ -17,15 +20,15 @@ def run_ICN(graph, S, q):
         new_activated = set()
         for u in current_negative:
             for v in graph.successors(u):
-                if node_status[v] == 0 and random.random() < graph[u][v]['p_e']:
+                if node_status[v] == 0 and rng.random() < graph[u][v]['p_e']:
                     # if node u is negative, node v always become negative
                     node_status[v] = 2
                     new_activated.add(v)
         for u in current_positive:
             for v in graph.successors(u):
-                if node_status[v] == 0 and random.random() < graph[u][v]['p_e']:
+                if node_status[v] == 0 and rng.random() < graph[u][v]['p_e']:
                     # if node u is positive, node v becomes positive with prob. q_v and negative with prob. (1 - q_v)
-                    if random.random() < q[v]:
+                    if rng.random() < q[v]:
                         node_status[v] = 1
                     else:
                         node_status[v] = 2
@@ -85,11 +88,10 @@ def run_COICM(graph, S_M, S_T):
     fin_nega = {node for node, stat in node_status.items() if stat == 2} # finally negatively activated nodes; fin_nega = {v ∈ V | node_status[v] = 2} 
     return fin_posi, fin_nega
 
-def run_simulation(graph, S, X, kmax):
-    step = kmax//20
+def run_ICN_simulation(graph, S, X, kmax, num_simulation=5000, num_step=20):
+    step = kmax//num_step
     xaxis = np.arange(0, kmax + step, step)
-    num_simulation = 1000
-    Y_ave = []
+    ave_misinfo_spread = []
     for k in xaxis:
         X_k = X[:int(k)]
         q_X = {node: get_qX(node, X_k, graph) for node in graph.nodes()}
@@ -97,8 +99,9 @@ def run_simulation(graph, S, X, kmax):
         for _ in range(num_simulation):
             fin_p, fin_n = run_ICN(graph, S, q_X)
             num_posi += len(fin_p)
-        Y_ave.append(num_posi / num_simulation)
-    return Y_ave
+        ave_misinfo_spread.append(num_posi / num_simulation)
+    return ave_misinfo_spread
+
 
 def run_IC_simulation(graph, S, B, kmax):
     step = kmax//20
