@@ -1,5 +1,7 @@
 
-The politifact & gossipcop datasets are from GNN-FakeNews repository (https://github.com/safe-graph/GNN-FakeNews)
+The politifact & gossipcop datasets are from the GNN-FakeNews repository (https://github.com/safe-graph/GNN-FakeNews)
+
+The Reed98 network dataset is from the Network Repository (https://networkrepository.com/)
 
 Other social network datasets are from the Stanford Large Network Dataset Collection (https://snap.stanford.edu/data/)
 
