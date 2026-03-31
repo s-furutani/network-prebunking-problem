@@ -2,7 +2,7 @@
 
 This repository contains datasets and source codes for the paper:
 
-> **Network Prebunking Problem: Optimizing Prebunking Targets to Suppress the Spread of Misinformation in Social Networks**
+> **Minimizing Misinformation Spread Through Targeted Prebunking in Social Networks**
 
 ## Overview
 
@@ -152,14 +152,7 @@ Visualize results using `plot_results.ipynb`.
 
 If you find this repository useful, please cite:
 
-```bibtex
-@article{furutani2025network,
-  title={Network Prebunking Problem: Optimizing Prebunking Targets to Suppress the Spread of Misinformation in Social Networks},
-  author={Furutani, Satoshi and Shibahara, Toshiki and Akiyama, Mitsuaki and Aida, Masaki},
-  journal={arXiv preprint},
-  year={2025}
-}
-```
+TBA
 
 ## License
 
