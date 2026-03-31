@@ -1,5 +1,7 @@
 import numpy as np
 import random
+from collections import deque
+from tqdm import tqdm
 
 def run_ICN(graph, S, q, rng=None):
     if rng is None:
@@ -88,23 +90,36 @@ def run_COICM(graph, S_M, S_T):
     fin_nega = {node for node, stat in node_status.items() if stat == 2} # finally negatively activated nodes; fin_nega = {v ∈ V | node_status[v] = 2} 
     return fin_posi, fin_nega
 
-def run_ICN_simulation(graph, S, X, kmax, num_simulation=5000, num_step=20):
+def run_ICN_simulation(graph, S, X, kmax, num_simulation=2000, num_step=10, return_std=False):
+    """
+    各 k について ICN を num_simulation 回実行し、最終的な正感染ノード数 len(fin_p) の平均を返す。
+    return_std=True のときは、同じ指標について標本標準偏差（ddof=1）も返す。
+    """
     step = kmax//num_step
     xaxis = np.arange(0, kmax + step, step)
+    print('xaxis:', xaxis)
     ave_misinfo_spread = []
-    for k in xaxis:
+    std_misinfo_spread = [] if return_std else None
+    for k in tqdm(xaxis):
         X_k = X[:int(k)]
         q_X = {node: get_qX(node, X_k, graph) for node in graph.nodes()}
-        num_posi = 0
+        spreads = []
         for _ in range(num_simulation):
             fin_p, fin_n = run_ICN(graph, S, q_X)
-            num_posi += len(fin_p)
-        ave_misinfo_spread.append(num_posi / num_simulation)
+            spreads.append(len(fin_p))
+        ave_misinfo_spread.append(float(np.mean(spreads)))
+        if return_std:
+            if num_simulation > 1:
+                std_misinfo_spread.append(float(np.std(spreads, ddof=1)))
+            else:
+                std_misinfo_spread.append(0.0)
+    if return_std:
+        return ave_misinfo_spread, std_misinfo_spread
     return ave_misinfo_spread
 
 
 def run_IC_simulation(graph, S, B, kmax):
-    step = kmax//20
+    step = kmax//10
     xaxis = np.arange(0, kmax + step, step)
     num_simulation = 1000
     Y_ave = []
@@ -120,7 +135,7 @@ def run_IC_simulation(graph, S, B, kmax):
     return Y_ave
 
 def run_COICM_simulation(graph, S_M, S_T, kmax):
-    step = kmax//20
+    step = kmax//10
     xaxis = np.arange(0, kmax + step, step)
     num_simulation = 1000
     Y_ave = []
