@@ -10,6 +10,50 @@ import seaborn as sns
 plt.rcParams['savefig.facecolor'] = 'white'
 plt.rcParams['figure.facecolor'] = 'white'
 
+# 95% CI 付きでプロットするアルゴリズム
+ALGS_WITH_CI = ('Greedy', r'MIA-NPP ($\theta=0.01$)')
+
+
+def resolve_sim_results_path(result_dir, alg_file_base, prefer_std=True):
+    """
+    シミュレーション結果ファイルを解決する。
+    prefer_std=True なら *_sim_results_with_std.npz を優先し、なければ *_sim_results.npy。
+    """
+    npz_path = os.path.join(result_dir, f'{alg_file_base}_sim_results_with_std.npz')
+    npy_path = os.path.join(result_dir, f'{alg_file_base}_sim_results.npy')
+    if prefer_std and os.path.isfile(npz_path):
+        return npz_path, 'npz'
+    if os.path.isfile(npy_path):
+        return npy_path, 'npy'
+    if os.path.isfile(npz_path):
+        return npz_path, 'npz'
+    return None, None
+
+
+def plot_sim_results_curve(path, fmt, kind, xaxis, color, label, plot_ci=False):
+    """シミュレーション結果を1系列プロットする。plot_ci=True のときのみ 95% CI を表示。"""
+    if kind == 'npz':
+        results = np.load(path)
+        mean = results['mean']
+        y = mean / mean[0]
+        plt.plot(
+            xaxis, y, fmt, color=color, label=label,
+            markersize=8, linewidth=2, markerfacecolor='none',
+        )
+        if plot_ci:
+            std = results['std']
+            ci = 1.96 * std / np.sqrt(2000)
+            plt.fill_between(
+                xaxis, y - ci / mean[0], y + ci / mean[0],
+                alpha=0.2, color=color,
+            )
+    else:
+        results = np.load(path, allow_pickle=True)
+        plt.plot(
+            xaxis, results / results[0], fmt, color=color, label=label,
+            markersize=8, linewidth=2, markerfacecolor='none',
+        )
+
 def plot_simulation_results(dataset_name='benchmark', edge_prob_model='WC'):
     if dataset_name == 'benchmark':
         graph_names = ['Reed98', 'LastFM', 'Deezer', 'Epinions', 'Twitter']
@@ -29,7 +73,7 @@ def plot_simulation_results(dataset_name='benchmark', edge_prob_model='WC'):
     
     plt.rcParams["mathtext.fontset"] = 'cm'
     plt.figure(figsize=(4 * num_col, 4), dpi=300)
-    alg_names = ['Random', 'Gullible', 'Degree', 'Distance', 'Adv.Greedy', 'CMIA-O', r'MIA-NPP ($\theta=0.01$)', r'MIA-NPP ($\theta=0.05$)', r'Greedy ($n_{\mathrm{MC}}=1000$)']#, r'Greedy ($n_{\mathrm{MC}}=2000$)']
+    alg_names = ['Random', 'Gullible', 'Degree', 'Distance', 'Adv.Greedy', 'CMIA-O', r'MIA-NPP ($\theta=0.01$)', r'MIA-NPP ($\theta=0.05$)', 'Greedy']
     alg_path_names = {
         'Random': 'Random',
         'Gullible': 'Gullible',
@@ -46,7 +90,7 @@ def plot_simulation_results(dataset_name='benchmark', edge_prob_model='WC'):
     cmap_reds = plt.get_cmap('Reds_r')
     color_list_reds = [cmap_reds((a+1)/5) for a in range(4)]
     fmts = {'Greedy': ':', 'Greedy2000': ':', r'MIA-NPP ($\theta=0.01$)': 'o-', r'MIA-NPP ($\theta=0.05$)': 'o--', 'CMIA-O': '^-', 'Adv.Greedy': 'v-', 'Distance': 'd-', 'Degree': 'p-', 'Gullible': 'x-', 'Random': '*-'}
-    colors = {'Random': color_list[0], 'Gullible': color_list[1], 'Degree': color_list[2], 'Distance': color_list[3], 'Adv.Greedy': color_list[4], 'CMIA-O': color_list[5], r'MIA-NPP ($\theta=0.01$)': color_list_reds[1], r'MIA-NPP ($\theta=0.05$)': color_list_reds[2], r'Greedy ($n_{\mathrm{MC}}=1000$)': 'black', r'Greedy ($n_{\mathrm{MC}}=2000$)': 'black'}
+    colors = {'Random': color_list[0], 'Gullible': color_list[1], 'Degree': color_list[2], 'Distance': color_list[3], 'Adv.Greedy': color_list[4], 'CMIA-O': color_list[5], r'MIA-NPP ($\theta=0.01$)': color_list_reds[1], r'MIA-NPP ($\theta=0.05$)': color_list_reds[2], 'Greedy': 'black'}
     linewidths = {'Greedy': 2, 'Greedy2000': 2, r'MIA-NPP ($\theta=0.01$)': 3, r'MIA-NPP ($\theta=0.05$)': 3, 'CMIA-O': 2, 'Adv.Greedy': 2, 'Distance': 2, 'Degree': 2, 'Gullible': 2, 'Random': 2}
 
     for i, graph_name in enumerate(graph_names):
@@ -54,27 +98,19 @@ def plot_simulation_results(dataset_name='benchmark', edge_prob_model='WC'):
         plt.title(graph_name)
         for j, alg_name in enumerate(alg_names):
             if dataset_name == 'benchmark':
-                if alg_name == 'Greedy' or alg_name == r'MIA-NPP ($\theta=0.01$)':
-                    path = f'results/{dataset_name}/{graph_name}_{edge_prob_model}/{alg_path_names[alg_name]}_sim_results_with_std.npz'
-                else:
-                    path = f'results/{dataset_name}/{graph_name}_{edge_prob_model}/{alg_path_names[alg_name]}_sim_results.npy'
+                result_dir = f'results/{dataset_name}/{graph_name}_{edge_prob_model}'
             else:
-                if alg_name == 'Greedy' or alg_name == r'MIA-NPP ($\theta=0.01$)':
-                    path = f'results/{dataset_name}/{graph_name}/{alg_path_names[alg_name]}_sim_results_with_std.npz'
-                else:
-                    path = f'results/{dataset_name}/{graph_name}/{alg_path_names[alg_name]}_sim_results.npy'
-            if not os.path.exists(path):
+                result_dir = f'results/{dataset_name}/{graph_name}'
+            use_std = alg_name in ALGS_WITH_CI
+            path, kind = resolve_sim_results_path(
+                result_dir, alg_path_names[alg_name], prefer_std=use_std,
+            )
+            if path is None:
                 continue
-            if alg_name == 'Greedy' or alg_name == r'MIA-NPP ($\theta=0.01$)':
-                results = np.load(path)
-                mean = results['mean']
-                std = results['std']
-                ci = 1.96 * std / np.sqrt(2000)
-                plt.plot(xaxis, mean/mean[0], fmts[alg_name], color=colors[alg_name], label=alg_name, markersize=8, linewidth=2, markerfacecolor='none')
-                plt.fill_between(xaxis, mean/mean[0] - ci/mean[0], mean/mean[0] + ci/mean[0], alpha=0.2, color=colors[alg_name])
-            else:
-                results = np.load(path, allow_pickle=True)
-                plt.plot(xaxis, results/results[0], fmts[alg_name], color=colors[alg_name], label=alg_name, markersize=8, linewidth=2, markerfacecolor='none')
+            plot_sim_results_curve(
+                path, fmts[alg_name], kind, xaxis, colors[alg_name], alg_name,
+                plot_ci=use_std,
+            )
             plt.xticks([0, 50, 100, 150, 200], [0, 50, 100, 150, 200], fontsize=15)
             plt.yticks(fontsize=15)
             plt.xlim((-3, 203))
@@ -107,6 +143,62 @@ plot_simulation_results(edge_prob_model='TR')
 plot_simulation_results(dataset_name='fakenewsnet')
 # %%
 
+def plot_simulation_results_greedy(edge_prob_model='WC'):
+    graph_names = ['Reed98', 'LastFM']
+    
+    n = len(graph_names)
+    num_row = 1
+    num_col = 2
+    xaxis = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
+
+    theta_suffix = '_theta=1e-02'
+    theta_suffix2 = '_theta=5e-02'
+    rho_suffix = '_rho=1000'
+    
+    plt.rcParams["mathtext.fontset"] = 'cm'
+    plt.figure(figsize=(4 * num_col, 4), dpi=300)
+    alg_names = ['Greedy1000', 'Greedy2000']
+    alg_path_names = {
+        'Greedy1000': 'CELF_rho=1000',
+        'Greedy2000': 'CELF_rho=2000',
+    }
+    fmts = {'Greedy1000': 'o--', 'Greedy2000': 'o-'}
+    colors = {'Greedy1000': 'black', 'Greedy2000': 'black'}
+    linewidths = {'Greedy1000': 2, 'Greedy2000': 2}
+
+    for i, graph_name in enumerate(graph_names):
+        plt.subplot(num_row, num_col, i + 1)
+        plt.title(graph_name)
+        for j, alg_name in enumerate(alg_names):
+            path = f'results/benchmark/{graph_name}_{edge_prob_model}/{alg_path_names[alg_name]}_sim_results.npy'
+            if not os.path.exists(path):
+                continue
+            results = np.load(path, allow_pickle=True)
+            plt.plot(xaxis, results/results[0], fmts[alg_name], color=colors[alg_name], label=alg_name, markersize=8, linewidth=2, markerfacecolor='none')
+            plt.xticks([0, 50, 100, 150, 200], [0, 50, 100, 150, 200], fontsize=15)
+            plt.yticks(fontsize=15)
+            plt.xlim((-3, 203))
+            # plt.ylim((ymin * 0.9, ymax * 1.1))
+            plt.xlabel(r'# of prebunked nodes $k$', fontsize=15)
+            if i == 0:
+                plt.ylabel(r'Relative spread $y(k)/y(0)$', fontsize=15)
+            plt.title(graph_name, fontsize=17)
+        if i == 0:
+            # Collect handles and labels from the current axes
+            handles, labels = plt.gca().get_legend_handles_labels()
+    # After all subplots, add a single legend above the figure
+    plt.figlegend(
+        handles, labels, loc='upper center', ncol=len(handles),
+        bbox_to_anchor=(0.5, 1.13), frameon=False, fontsize='x-large'
+    )
+
+    plt.tight_layout()
+    plt.show()
+
+plot_simulation_results_greedy()
+plot_simulation_results_greedy(edge_prob_model='TR')
+
+# %%
 
 def load_algorithm_timings_table(benchmark_dir='results/benchmark'):
     """
@@ -333,3 +425,85 @@ def plot_simulation_results_uncertain(graph_names, num_row, num_col, kmax, sig_e
 
 plot_simulation_results_uncertain(graph_names=['politifact', 'gossipcop'], num_row=1, num_col=2, kmax=200, sig_eps_is_01=True)
 # %%
+
+
+def plot_simulation_results_twitter_higgs():
+    """Twitter-Higgs のベンチマーク結果を 1x2 (WC / TR) でプロット。"""
+    graph_name = 'Twitter_Higgs'
+    edge_prob_models = ['WC', 'TR']
+    num_row, num_col = 1, 2
+    xaxis = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
+
+    theta_suffix = '_theta=1e-02'
+    theta_suffix2 = '_theta=5e-02'
+    rho_suffix = '_rho=1000'
+
+    plt.rcParams['mathtext.fontset'] = 'cm'
+    plt.figure(figsize=(4 * num_col, 4), dpi=300)
+    alg_names = [
+        'Random', 'Gullible', 'Degree', 'Distance', 'Adv.Greedy', 'CMIA-O',
+        r'MIA-NPP ($\theta=0.01$)', r'MIA-NPP ($\theta=0.05$)', 'Greedy',
+    ]
+    alg_path_names = {
+        'Random': 'Random',
+        'Gullible': 'Gullible',
+        'Degree': 'Degree',
+        'Distance': 'Distance',
+        'Adv.Greedy': 'AdvancedGreedy' + rho_suffix,
+        'CMIA-O': 'CMIA-O' + theta_suffix,
+        r'MIA-NPP ($\theta=0.01$)': 'MIA-NPP' + theta_suffix,
+        r'MIA-NPP ($\theta=0.05$)': 'MIA-NPP' + theta_suffix2,
+        'Greedy': 'CELF' + rho_suffix,
+    }
+    cmap = plt.get_cmap('viridis_r')
+    color_list = [cmap(a / 7) for a in range(7)]
+    cmap_reds = plt.get_cmap('Reds_r')
+    color_list_reds = [cmap_reds((a + 1) / 5) for a in range(4)]
+    fmts = {
+        'Greedy': ':', r'MIA-NPP ($\theta=0.01$)': 'o-', r'MIA-NPP ($\theta=0.05$)': 'o--',
+        'CMIA-O': '^-', 'Adv.Greedy': 'v-', 'Distance': 'd-', 'Degree': 'p-',
+        'Gullible': 'x-', 'Random': '*-',
+    }
+    colors = {
+        'Random': color_list[0], 'Gullible': color_list[1], 'Degree': color_list[2],
+        'Distance': color_list[3], 'Adv.Greedy': color_list[4], 'CMIA-O': color_list[5],
+        r'MIA-NPP ($\theta=0.01$)': color_list_reds[1],
+        r'MIA-NPP ($\theta=0.05$)': color_list_reds[2], 'Greedy': 'black',
+    }
+
+    handles, labels = [], []
+    for i, edge_prob_model in enumerate(edge_prob_models):
+        plt.subplot(num_row, num_col, i + 1)
+        for alg_name in alg_names:
+            result_dir = f'results/benchmark/{graph_name}_{edge_prob_model}'
+            use_std = alg_name in ALGS_WITH_CI
+            path, kind = resolve_sim_results_path(
+                result_dir, alg_path_names[alg_name], prefer_std=use_std,
+            )
+            if path is None:
+                continue
+            plot_sim_results_curve(
+                path, fmts[alg_name], kind, xaxis, colors[alg_name], alg_name,
+                plot_ci=use_std,
+            )
+        plt.xticks([0, 50, 100, 150, 200], [0, 50, 100, 150, 200], fontsize=15)
+        plt.yticks(fontsize=15)
+        plt.xlim((-3, 203))
+        plt.xlabel(r'# of prebunked nodes $k$', fontsize=15)
+        if i == 0:
+            plt.ylabel(r'Relative spread $y(k)/y(0)$', fontsize=15)
+        plt.title(f'Twitter-Higgs ({edge_prob_model})', fontsize=17)
+        if i == 0:
+            handles, labels = plt.gca().get_legend_handles_labels()
+
+    plt.figlegend(
+        handles, labels, loc='upper center', ncol=(len(handles) + 1) // 2,
+        bbox_to_anchor=(0.5, 1.2), frameon=False, fontsize='x-large',
+    )
+    plt.tight_layout()
+    plt.show()
+
+
+plot_simulation_results_twitter_higgs()
+# %%
+

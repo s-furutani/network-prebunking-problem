@@ -17,6 +17,172 @@ import load_graph
 import algorithm
 import simulation
 
+PARAM_PROFILES = {
+    'default': {
+        'mu_q': 0.7, 'sigma_q': 0.3, 'mu_eps': 0.5, 'sigma_eps': 0.1,
+        'suffix': '', 'uniform': False,
+    },
+    'q0502_eps0301': {
+        'mu_q': 0.5, 'sigma_q': 0.2, 'mu_eps': 0.3, 'sigma_eps': 0.1,
+        'suffix': '_q0502_eps0301', 'uniform': False,
+    },
+    'q_eps_uni': {
+        'suffix': '_q_eps_uni', 'uniform': True,
+    },
+}
+
+
+def _assign_edge_prob(graph, u, v, pe):
+    """エッジ伝播確率 p_e と正負別確率 p_e_plus / p_e_minus を設定する。"""
+    graph[u][v]['p_e'] = pe
+    graph[u][v]['p_e_plus'] = pe
+    graph[u][v]['p_e_minus'] = pe
+    graph[u][v]['-logp'] = -np.log(pe)
+
+
+def _ensure_edge_propagation_probs(graph):
+    """p_e が既にあるが p_e_plus 未設定のエッジ（fakenewsnet 等）に正負確率を付与。"""
+    for u, v in graph.edges():
+        if 'p_e_plus' in graph[u][v]:
+            continue
+        if 'p_e' in graph[u][v]:
+            pe = graph[u][v]['p_e']
+        elif 'weight' in graph[u][v]:
+            pe = graph[u][v]['weight']
+        else:
+            continue
+        _assign_edge_prob(graph, u, v, pe)
+
+
+def apply_asymmetric_propagation(graph, alpha):
+    """負伝播確率のみ p_e_minus = alpha * p_e_plus に上書きする。"""
+    for u, v in graph.edges():
+        p_plus = graph[u][v]['p_e_plus']
+        graph[u][v]['p_e_minus'] = alpha * p_plus
+
+
+def get_param_suffix(param_profile):
+    """param_profile に対応する結果ファイル名 suffix を返す。"""
+    if param_profile not in PARAM_PROFILES:
+        raise ValueError(f"Unknown param_profile: {param_profile}")
+    return PARAM_PROFILES[param_profile]['suffix']
+
+
+def get_alpha_suffix(alpha):
+    """非対称伝播 alpha に対応するシミュ結果ファイル名 suffix を返す。"""
+    if alpha == 0:
+        return '_alpha=0'
+    return f'_alpha={alpha:.0e}'
+
+
+def get_benchmark_directory(graph_name, edge_prob_model, seed_mode='default'):
+    """ベンチマーク結果ディレクトリ（末尾 / 付き）。"""
+    base = f'results/benchmark/{graph_name}_{edge_prob_model}'
+    if seed_mode == 'default':
+        return f'{base}/'
+    if seed_mode in ('nonzero', 'adversarial'):
+        return f'{base}_{seed_mode}/'
+    raise ValueError(f"Unknown seed_mode: {seed_mode}")
+
+
+def load_benchmark_graph(graph_name):
+    """ベンチマークグラフを読み込む。"""
+    if graph_name == 'ca_HepTh':
+        return load_graph.ca_HepTh_graph()
+    if graph_name == 'Facebook':
+        return load_graph.Facebook_graph()
+    if graph_name == 'WikiVote':
+        return load_graph.WikiVote_graph()
+    if graph_name == 'LastFM':
+        return load_graph.LastFM_graph()
+    if graph_name == 'Deezer':
+        return load_graph.Deezer_graph()
+    if graph_name == 'Enron':
+        return load_graph.Enron_graph()
+    if graph_name == 'Epinions':
+        return load_graph.Epinions_graph()
+    if graph_name == 'Twitter':
+        return load_graph.Twitter_graph()
+    if graph_name == 'Stanford_Web':
+        return load_graph.Stanford_Web_graph()
+    if graph_name == 'Pokec':
+        return load_graph.Pokec_social_network()
+    if graph_name == 'Twitter_Higgs':
+        return load_graph.Twitter_Higgs_graph()
+    if graph_name == 'Congress':
+        return load_graph.Congress_network()
+    if graph_name == 'Reed98':
+        return load_graph.Reed98_network()
+    if graph_name == 'ER_test':
+        random.seed(0)
+        np.random.seed(0)
+        graph = nx.erdos_renyi_graph(500, 0.05)
+        graph = graph.to_directed()
+        return graph, 'ER_test'
+    if graph_name == 'BA_test':
+        random.seed(0)
+        np.random.seed(0)
+        graph = nx.barabasi_albert_graph(500, 10)
+        graph = graph.to_directed()
+        return graph, 'BA_test'
+    raise ValueError(f"Unknown graph name: {graph_name}")
+
+
+def get_seed_nodes(graph, num_seeds, seed_mode='default'):
+    """シードノード集合 S を選択する（benchmark 用）。"""
+    if seed_mode == 'default':
+        return get_random_high_degree_nodes(graph, num_seeds)
+    out_degrees = dict(graph.out_degree())
+    if seed_mode == 'nonzero':
+        random.seed(42)
+        candidates = [n for n, d in out_degrees.items() if d > 0]
+        if len(candidates) < num_seeds:
+            raise ValueError(
+                f'Not enough nonzero out-degree nodes: {len(candidates)} < {num_seeds}'
+            )
+        return list(random.sample(candidates, num_seeds))
+    if seed_mode == 'adversarial':
+        sorted_nodes = sorted(out_degrees, key=out_degrees.get, reverse=True)
+        return list(sorted_nodes[:num_seeds])
+    raise ValueError(f"Unknown seed_mode: {seed_mode}")
+
+
+def generate_node_parameters(graph, S, param_profile='default', random_seed=42):
+    """q, epsilon を param_profile に従って生成する。"""
+    if param_profile not in PARAM_PROFILES:
+        raise ValueError(f"Unknown param_profile: {param_profile}")
+    profile = PARAM_PROFILES[param_profile]
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+    if profile.get('uniform'):
+        q = {node: random.uniform(0.4, 1.0) for node in graph.nodes()}
+        epsilon = {node: random.uniform(0.0, 1.0) for node in graph.nodes()}
+    else:
+        q = {
+            node: get_truncated_normal(profile['mu_q'], profile['sigma_q'])
+            for node in graph.nodes()
+        }
+        epsilon = {
+            node: get_truncated_normal(profile['mu_eps'], profile['sigma_eps'])
+            for node in graph.nodes()
+        }
+    for s in S:
+        q[s] = 1.0
+        epsilon[s] = 0.0
+    return q, epsilon
+
+
+def describe_param_profile(param_profile):
+    """ログ出力用の param_profile 説明文字列。"""
+    profile = PARAM_PROFILES[param_profile]
+    if profile.get('uniform'):
+        return 'q ~ Uni(0.4, 1), epsilon ~ Uni(0, 1)'
+    return (
+        f"q ~ truncN({profile['mu_q']}, {profile['sigma_q']}), "
+        f"epsilon ~ truncN({profile['mu_eps']}, {profile['sigma_eps']})"
+    )
+
+
 def embed_model_parameters(graph, graph_name, q, epsilon, edge_prob_model='WC', is_benchmark=False, random_seed=42):
     """
     Embed model parameters into the graph.
@@ -50,8 +216,7 @@ def embed_model_parameters(graph, graph_name, q, epsilon, edge_prob_model='WC', 
             # Congress graph already has weight attributes
             for u, v in graph.edges():
                 pe = graph[u][v]['weight']
-                graph[u][v]['p_e'] = pe
-                graph[u][v]['-logp'] = - np.log(pe)
+                _assign_edge_prob(graph, u, v, pe)
         else:
             graph = graph.to_directed()
             
@@ -60,19 +225,18 @@ def embed_model_parameters(graph, graph_name, q, epsilon, edge_prob_model='WC', 
                 d_in = graph.in_degree()
                 for u, v in graph.edges():
                     pe = 1.0 / d_in[v]
-                    graph[u][v]['p_e'] = pe
-                    graph[u][v]['-logp'] = - np.log(pe)
+                    _assign_edge_prob(graph, u, v, pe)
             elif edge_prob_model == 'TR':
                 # Trivalency (TR) model: p_uv in {0.001, 0.01, 0.1}
-                # Set seed for reproducibility of edge probability assignment
                 random.seed(random_seed)
                 tr_probs = [0.001, 0.01, 0.1]
                 for u, v in graph.edges():
                     pe = random.choice(tr_probs)
-                    graph[u][v]['p_e'] = pe
-                    graph[u][v]['-logp'] = - np.log(pe)
+                    _assign_edge_prob(graph, u, v, pe)
             else:
                 raise ValueError(f"Unknown edge_prob_model: {edge_prob_model}. Use 'WC' or 'TR'.")
+    else:
+        _ensure_edge_propagation_probs(graph)
     
     # Set misinformation susceptibility and intervention effect for each node
     for v in graph.nodes():
@@ -172,96 +336,100 @@ def run_fakenewsnet_experiment(graph_name, kmax=200, theta=0.01, mu_eps=0.5, sig
     run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=num_mc_samples, cache_dir=cache_dir)
     run_simulation(graph, S, kmax, directory, theta=theta, num_mc_samples=num_mc_samples, with_std=with_std)
 
-def run_benchmark_experiment(graph_name, kmax=200, theta=0.01, mu_q=0.7, sigma_q=0.3, mu_eps=0.5, sigma_eps=0.1, num_seeds=5, num_mc_samples=5000, edge_prob_model='WC', use_cache=True, with_std=False):
+def run_benchmark_experiment(graph_name, kmax=200, theta=0.01, mu_q=0.7, sigma_q=0.3, mu_eps=0.5, sigma_eps=0.1, num_seeds=5, num_mc_samples=5000, edge_prob_model='WC', use_cache=True, with_std=False, seed_mode='default', param_profile='default'):
     """
     Run experiment with artificial model parameters on benchmark social network graphs.
-    
-    Parameters
-    ----------
-    graph_name : str
-        Name of the graph to use
-    kmax : int
-        Maximum number of intervention target nodes
-    theta : float
-        Influence threshold for MIA construction
-    mu_q, sigma_q : float
-        Distribution parameters for susceptibility q (truncated normal)
-    mu_eps, sigma_eps : float
-        Distribution parameters for intervention effect epsilon (truncated normal)
-    num_seeds : int
-        Number of seed nodes
-    num_mc_samples : int
-        Number of Monte Carlo samples for CELF
-    use_cache : bool
-        Whether to use MIIA caching (cache stored under results directory)
-    edge_prob_model : str
-        Edge propagation probability model ('WC' or 'TR')
     """
     print(f'Running experiment with benchmark social network: {graph_name}, edge_prob_model: {edge_prob_model}')
-    
-    # Load graph
-    if graph_name == 'ca_HepTh':
-        graph, graph_name = load_graph.ca_HepTh_graph()
-    elif graph_name == 'Facebook':
-        graph, graph_name = load_graph.Facebook_graph()
-    elif graph_name == 'WikiVote':
-        graph, graph_name = load_graph.WikiVote_graph()
-    elif graph_name == 'LastFM':
-        graph, graph_name = load_graph.LastFM_graph()
-    elif graph_name == 'Deezer':
-        graph, graph_name = load_graph.Deezer_graph()
-    elif graph_name == 'Enron':
-        graph, graph_name = load_graph.Enron_graph()
-    elif graph_name == 'Epinions':
-        graph, graph_name = load_graph.Epinions_graph()
-    elif graph_name == 'Twitter':
-        graph, graph_name = load_graph.Twitter_graph()
-    elif graph_name == 'Congress':
-        graph, graph_name = load_graph.Congress_network()
-    elif graph_name == 'Reed98':
-        graph, graph_name = load_graph.Reed98_network()
-    elif graph_name == 'ER_test':
-        random.seed(0)
-        np.random.seed(0)
-        graph = nx.erdos_renyi_graph(500, 0.05)
-        graph = graph.to_directed()
-        print(len(graph.nodes()), len(graph.edges()))
-    elif graph_name == 'BA_test':
-        random.seed(0)
-        np.random.seed(0)
-        graph = nx.barabasi_albert_graph(500, 10)
-        graph = graph.to_directed()
-        print(len(graph.nodes()), len(graph.edges()))
-    else:
-        raise ValueError(f"Unknown graph name: {graph_name}")
+    print(f'  seed_mode: {seed_mode}, param_profile: {param_profile}')
 
-    # Select seed nodes (uses random.seed(42) internally for reproducibility)
-    S = get_random_high_degree_nodes(graph, num_seeds)
+    graph, graph_name = load_benchmark_graph(graph_name)
+    S = get_seed_nodes(graph, num_seeds, seed_mode)
+    q, epsilon = generate_node_parameters(graph, S, param_profile)
+    graph = embed_model_parameters(
+        graph, graph_name, q, epsilon,
+        edge_prob_model=edge_prob_model, is_benchmark=True, random_seed=123,
+    )
 
-    # Set random seed for reproducibility of q and epsilon generation
-    random.seed(42)
-    np.random.seed(42)
-
-    # Generate susceptibility q and intervention effect epsilon
-    q = {node: get_truncated_normal(mu_q, sigma_q) for node in graph.nodes()}
-    epsilon = {node: get_truncated_normal(mu_eps, sigma_eps) for node in graph.nodes}
-    # q = {node: 1 if random.random() < 0.7 else 0 for node in graph.nodes}
-    # epsilon = {node: 1 for node in graph.nodes}
-    for s in S:
-        q[s] = 1.0
-        epsilon[s] = 0.0
-
-    # Embed parameters into graph (TR model uses random_seed=123 for edge probabilities)
-    graph = embed_model_parameters(graph, graph_name, q, epsilon, edge_prob_model=edge_prob_model, is_benchmark=True, random_seed=123)
+    result_suffix = get_param_suffix(param_profile)
+    directory = get_benchmark_directory(graph_name, edge_prob_model, seed_mode)
+    cache_dir = f'{directory}cache/' if use_cache else None
 
     print(f'graph: {graph_name}, n={len(graph.nodes())}, m={len(graph.edges())}, seed node: {S}')
-    print(f'  edge_prob_model: {edge_prob_model}, q ~ truncN({mu_q}, {sigma_q}), epsilon ~ truncN({mu_eps}, {sigma_eps})')
-    
-    # Include edge_prob_model in directory path to distinguish WC and TR results
-    directory = f'results/benchmark/{graph_name}_{edge_prob_model}/'
-    cache_dir = f'{directory}cache/' if use_cache else None
-    run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=num_mc_samples, cache_dir=cache_dir)
-    run_simulation(graph, S, kmax, directory, theta=theta, num_mc_samples=num_mc_samples, with_std=with_std)
+    print(f'  {describe_param_profile(param_profile)}')
+    print(f'  output directory: {directory}')
+
+    run_algorithms(
+        graph, S, kmax, theta, directory,
+        num_mc_samples=num_mc_samples, cache_dir=cache_dir, result_suffix=result_suffix,
+    )
+    run_simulation(
+        graph, S, kmax, directory, theta=theta,
+        num_mc_samples=num_mc_samples, with_std=with_std, result_suffix=result_suffix,
+    )
+
+
+def setup_benchmark_graph(graph_name, edge_prob_model, num_seeds=5, seed_mode='default', param_profile='default', alpha=None):
+    """
+    ベンチマークグラフを読み込み、S / q / epsilon を設定して返す。
+    alpha を指定した場合は非対称伝播 (p_e_minus = alpha * p_e_plus) を適用する。
+    """
+    graph, graph_name = load_benchmark_graph(graph_name)
+    S = get_seed_nodes(graph, num_seeds, seed_mode)
+    q, epsilon = generate_node_parameters(graph, S, param_profile)
+    graph = embed_model_parameters(
+        graph, graph_name, q, epsilon,
+        edge_prob_model=edge_prob_model, is_benchmark=True, random_seed=123,
+    )
+    if alpha is not None:
+        apply_asymmetric_propagation(graph, alpha)
+    return graph, graph_name, S
+
+
+def run_asymmetric_simulation(graph, S, kmax, source_directory, alpha, with_std=False):
+    """
+    対称設定で計算済みの介入集合 (.npy, suffix なし) を読み、
+    source_directory/asymmetric/ に alpha 付きシミュレーション結果を保存する。
+    """
+    output_directory = os.path.join(source_directory, 'asymmetric')
+    os.makedirs(output_directory, exist_ok=True)
+    alpha_suffix = get_alpha_suffix(alpha)
+    print(f'conducting asymmetric simulation -> {output_directory} (alpha={alpha})')
+
+    base_alg_names = [
+        'MIA-NPP_theta=5e-02',
+        'MIA-NPP_theta=1e-02',
+        'CMIA-O_theta=1e-02',
+        'Distance',
+        'Degree',
+        'Gullible',
+        'Random',
+    ]
+    for base_alg_name in tqdm(base_alg_names):
+        path = os.path.join(source_directory, base_alg_name + '.npy')
+        result_base = base_alg_name + alpha_suffix
+        if with_std:
+            sim_path = os.path.join(output_directory, result_base + '_sim_results_with_std.npz')
+        else:
+            sim_path = os.path.join(output_directory, result_base + '_sim_results.npy')
+        print(f'{base_alg_name}: {path} -> {sim_path}')
+        if not os.path.exists(path):
+            continue
+        if os.path.exists(sim_path):
+            continue
+        X = np.load(path, allow_pickle=True)
+        if with_std:
+            mean_spread, std_spread = simulation.run_ICN_simulation(
+                graph, S, X, kmax, return_std=True,
+            )
+            np.savez_compressed(
+                os.path.join(output_directory, result_base + '_sim_results_with_std'),
+                mean=np.asarray(mean_spread, dtype=float),
+                std=np.asarray(std_spread, dtype=float),
+            )
+        else:
+            results = simulation.run_ICN_simulation(graph, S, X, kmax)
+            write_data(output_directory, result_base + '_sim_results', results)
 
 def run_uncertain_experiment(graph_name, kmax=200, theta=0.01, mu_eps=0.5, sigma_eps=0.1, use_cache=True, with_std=False):
     """Run experiment with uncertainty in node susceptibility and intervention effect"""
@@ -335,7 +503,7 @@ def run_uncertain_experiment(graph_name, kmax=200, theta=0.01, mu_eps=0.5, sigma
             results = simulation.run_ICN_simulation(graph_truth, S, X, kmax)
             write_data(directory, alg_name + '_sim_results', results)
 
-def run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=5000, cache_dir=None):
+def run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=5000, cache_dir=None, result_suffix=''):
     """
     Run all algorithms for prebunking target selection.
     Skips computation if result file already exists.
@@ -360,9 +528,10 @@ def run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=5000, cache_
     """
     timings = load_algorithm_timings(directory)
 
-    def run_if_not_exists(alg_name, alg_func, params=None):
-        """Result が無いときだけ実行し、実行時間を timings に記録する。params は theta / num_mc_samples / num_graph_samples の辞書。"""
+    def run_if_not_exists(base_alg_name, alg_func, params=None):
+        """Result が無いときだけ実行し、実行時間を timings に記録する。"""
         params = params or {}
+        alg_name = base_alg_name + result_suffix
         path = os.path.join(directory, alg_name + '.npy')
         if os.path.exists(path):
             print(f'{alg_name}: [SKIP] {path} already exists')
@@ -386,22 +555,22 @@ def run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=5000, cache_
     print('computing prebunking node set X')
     
     # Random
-    # run_if_not_exists('Random', lambda: algorithm.BaselineRandom(graph, S, kmax))
+    run_if_not_exists('Random', lambda: algorithm.BaselineRandom(graph, S, kmax))
     
     # Degree
-    # run_if_not_exists('Degree', lambda: algorithm.BaselineDegree(graph, S, kmax))
+    run_if_not_exists('Degree', lambda: algorithm.BaselineDegree(graph, S, kmax))
     
     # Distance
-    # run_if_not_exists('Distance', lambda: algorithm.BaselineDistance(graph, S, kmax))
+    run_if_not_exists('Distance', lambda: algorithm.BaselineDistance(graph, S, kmax))
     
     # Gullible
-    # run_if_not_exists('Gullible', lambda: algorithm.BaselineGullible(graph, S, kmax))
+    run_if_not_exists('Gullible', lambda: algorithm.BaselineGullible(graph, S, kmax))
 
     # MIA-NPP (with MIIA caching)
-    # run_if_not_exists(f'MIA-NPP_theta={theta:.0e}', lambda: algorithm.MIA_NPP(graph, S, kmax, theta, cache_dir=cache_dir), {'theta': theta})
+    run_if_not_exists(f'MIA-NPP_theta={theta:.0e}', lambda: algorithm.MIA_NPP(graph, S, kmax, theta, cache_dir=cache_dir), {'theta': theta})
 
     # CMIA-O (with MIIA caching)
-    # run_if_not_exists(f'CMIA-O_theta={theta:.0e}', lambda: algorithm.CMIA_O(graph, S, kmax, theta, cache_dir=cache_dir), {'theta': theta})
+    run_if_not_exists(f'CMIA-O_theta={theta:.0e}', lambda: algorithm.CMIA_O(graph, S, kmax, theta, cache_dir=cache_dir), {'theta': theta})
 
     # AdvancedGreedy
     num_graph_samples = 1000
@@ -410,28 +579,28 @@ def run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=5000, cache_
     # CELF
     # run_if_not_exists(f'CELF_rho={num_mc_samples}', lambda: algorithm.CELF(graph, S, kmax, num_mc_samples, use_crn=True), {'num_mc_samples': num_mc_samples})
 
-def run_simulation(graph, S, kmax, directory, theta=0.01, num_mc_samples=5000, with_std=False):
+def run_simulation(graph, S, kmax, directory, theta=0.01, num_mc_samples=5000, with_std=False, result_suffix=''):
     """Run simulation for all algorithms (MIA-NPP/CMIA-O use theta for filename)."""
     print('conducting simulation')
 
-    alg_names = [
-        # 'MIA-NPP_theta=5e-02',
-        'MIA-NPP_theta=1e-02',
-        # 'CMIA-O_theta=1e-02',
-        # 'AdvancedGreedy_rho=1000',
+    base_alg_names = [
         'CELF_rho=1000',
-        # 'CELF_rho=2000',
-        # 'Distance',
-        # 'Degree',
-        # 'Gullible',
-        # 'Random'
+        'AdvancedGreedy_rho=1000',
+        'MIA-NPP_theta=5e-02',
+        'MIA-NPP_theta=1e-02',
+        'CMIA-O_theta=1e-02',
+        'Distance',
+        'Degree',
+        'Gullible',
+        'Random',
     ]
-    for alg_name in tqdm(alg_names):
-        path = directory + alg_name + '.npy'
+    for base_alg_name in tqdm(base_alg_names):
+        alg_name = base_alg_name + result_suffix
+        path = os.path.join(directory, alg_name + '.npy')
         if with_std:
             sim_path = os.path.join(directory, alg_name + '_sim_results_with_std.npz')
         else:
-            sim_path = directory + alg_name + '_sim_results.npy'
+            sim_path = os.path.join(directory, alg_name + '_sim_results.npy')
         print(f'{alg_name}: {path}, {sim_path}')
         if not os.path.exists(path):
             continue  # no algorithm result, skip
@@ -456,7 +625,7 @@ def main():
     parser.add_argument('--type', choices=['fakenewsnet', 'benchmark', 'uncertain'], required=True,
                        help='Experiment type')
     parser.add_argument('--graph', type=str, default='politifact',
-                       help='Graph name (fakenewsnet: politifact/gossipcop, benchmark: Reed98/Facebook/WikiVote/LastFM/Deezer/Enron/Epinions/Twitter)')
+                       help='Graph name (fakenewsnet: politifact/gossipcop, benchmark: Reed98/Facebook/WikiVote/LastFM/Deezer/Enron/Epinions/Twitter/Stanford_Web/Pokec/Twitter_Higgs)')
     parser.add_argument('--kmax', type=int, default=200, help='Maximum number of nodes')
     parser.add_argument('--theta', type=float, default=0.01, help='Threshold')
     parser.add_argument('--mu_eps', type=float, default=0.5, help='Mean of epsilon distribution')
@@ -471,6 +640,10 @@ def main():
                        help='Disable MIIA caching (cache is stored under results directory by default)')
     parser.add_argument('--with_std', action='store_true',
                        help='ICN simulation で平均に加え標準偏差も計算し、*_sim_results_with_std.npz に保存する')
+    parser.add_argument('--seed_mode', choices=['default', 'nonzero', 'adversarial'], default='default',
+                       help='Seed selection mode (benchmark only): default=top50 random, nonzero=all nonzero out-degree, adversarial=top out-degree')
+    parser.add_argument('--param_profile', choices=['default', 'q0502_eps0301', 'q_eps_uni'], default='default',
+                       help='q/epsilon generation profile (benchmark only)')
     args = parser.parse_args()
     
     use_cache = not args.no_cache
@@ -488,6 +661,7 @@ def main():
             args.graph, args.kmax, args.theta, args.mu_q, args.sigma_q,
             args.mu_eps, args.sigma_eps, args.num_seeds, args.num_mc_samples,
             args.edge_prob_model, use_cache, with_std=args.with_std,
+            seed_mode=args.seed_mode, param_profile=args.param_profile,
         )
     elif args.type == 'uncertain':
         run_uncertain_experiment(

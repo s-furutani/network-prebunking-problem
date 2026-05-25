@@ -118,6 +118,43 @@ def Twitter_graph():
     graph = graph.subgraph(lwcc)
     return graph, 'Twitter'
 
+def Stanford_Web_graph():
+    edges = []
+    with open('data/web-Stanford.txt', 'r') as file:
+        for line in file:
+            data = tuple(line.strip().split('\t'))
+            edges.append(data)
+    graph = nx.DiGraph()
+    graph.add_edges_from(edges)
+    lwcc = max(nx.weakly_connected_components(graph), key=len)
+    graph = graph.subgraph(lwcc)
+    return graph, 'Stanford_Web'
+
+def Pokec_social_network():
+    edges = []
+    with open('data/soc-pokec-relationships.txt', 'r') as file:
+        for line in file:
+            data = tuple(line.strip().split('\t'))
+            edges.append(data)
+    graph = nx.DiGraph()
+    graph.add_edges_from(edges)
+    lwcc = max(nx.weakly_connected_components(graph), key=len)
+    graph = graph.subgraph(lwcc)
+    return graph, 'Pokec'
+
+def Twitter_Higgs_graph():
+    edges = []
+    with open('data/soc-twitter-higgs.edges', 'r') as file:
+        for line in file:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                edges.append((parts[0], parts[1]))
+    graph = nx.DiGraph()
+    graph.add_edges_from(edges)
+    lwcc = max(nx.weakly_connected_components(graph), key=len)
+    graph = graph.subgraph(lwcc)
+    return graph, 'Twitter_Higgs'
+
 def Congress_network():
     graph = nx.read_edgelist('data/congress_network/congress.edgelist', create_using=nx.DiGraph(), data=True)
     lwcc = max(nx.weakly_connected_components(graph), key=len)
@@ -180,3 +217,9 @@ def Reed98_network():
 # ******************************
 # Twitter
 # |V| = 81306 , |E| = 1768149 , d_max = 1205 , d_min = 0 , d_ave = 21.75
+
+# graph, graph_name = Twitter_Higgs_graph()
+# print(graph_name)
+# print(len(graph.nodes()), len(graph.edges()))
+# dd = list(dict(graph.out_degree()).values())
+# print('d_max =', np.max(dd), ', d_min =', np.min(dd), ', d_ave =', np.round(np.average(dd), 2))

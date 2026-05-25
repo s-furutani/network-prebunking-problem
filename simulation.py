@@ -22,13 +22,13 @@ def run_ICN(graph, S, q, rng=None):
         new_activated = set()
         for u in current_negative:
             for v in graph.successors(u):
-                if node_status[v] == 0 and rng.random() < graph[u][v]['p_e']:
+                if node_status[v] == 0 and rng.random() < graph[u][v]['p_e_minus']:
                     # if node u is negative, node v always become negative
                     node_status[v] = 2
                     new_activated.add(v)
         for u in current_positive:
             for v in graph.successors(u):
-                if node_status[v] == 0 and rng.random() < graph[u][v]['p_e']:
+                if node_status[v] == 0 and rng.random() < graph[u][v]['p_e_plus']:
                     # if node u is positive, node v becomes positive with prob. q_v and negative with prob. (1 - q_v)
                     if rng.random() < q[v]:
                         node_status[v] = 1
