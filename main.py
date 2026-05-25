@@ -75,6 +75,30 @@ def get_alpha_suffix(alpha):
     return f'_alpha={alpha:.0e}'
 
 
+def is_q_eps_dependent_alg(base_alg_name):
+    """q / epsilon に依存するアルゴリズム（介入集合 X の計算が q, eps に依存）。"""
+    return (
+        base_alg_name.startswith('MIA-NPP_theta=')
+        or base_alg_name.startswith('CELF_rho=')
+    )
+
+
+def intervention_npy_name(base_alg_name, result_suffix=''):
+    """
+    介入集合 .npy のファイル名（拡張子なし）。
+
+    param_profile != default のとき、q/eps 非依存アルゴリズムは default の .npy を参照する。
+    """
+    if result_suffix and not is_q_eps_dependent_alg(base_alg_name):
+        return base_alg_name
+    return base_alg_name + result_suffix
+
+
+def sim_result_name(base_alg_name, result_suffix=''):
+    """シミュレーション結果ファイル名（拡張子なし）。"""
+    return base_alg_name + result_suffix
+
+
 def get_benchmark_directory(graph_name, edge_prob_model, seed_mode='default'):
     """ベンチマーク結果ディレクトリ（末尾 / 付き）。"""
     base = f'results/benchmark/{graph_name}_{edge_prob_model}'
@@ -530,8 +554,10 @@ def run_algorithms(graph, S, kmax, theta, directory, num_mc_samples=5000, cache_
 
     def run_if_not_exists(base_alg_name, alg_func, params=None):
         """Result が無いときだけ実行し、実行時間を timings に記録する。"""
+        if result_suffix and not is_q_eps_dependent_alg(base_alg_name):
+            return
         params = params or {}
-        alg_name = base_alg_name + result_suffix
+        alg_name = intervention_npy_name(base_alg_name, result_suffix)
         path = os.path.join(directory, alg_name + '.npy')
         if os.path.exists(path):
             print(f'{alg_name}: [SKIP] {path} already exists')
@@ -595,13 +621,14 @@ def run_simulation(graph, S, kmax, directory, theta=0.01, num_mc_samples=5000, w
         'Random',
     ]
     for base_alg_name in tqdm(base_alg_names):
-        alg_name = base_alg_name + result_suffix
-        path = os.path.join(directory, alg_name + '.npy')
+        intervention_name = intervention_npy_name(base_alg_name, result_suffix)
+        sim_name = sim_result_name(base_alg_name, result_suffix)
+        path = os.path.join(directory, intervention_name + '.npy')
         if with_std:
-            sim_path = os.path.join(directory, alg_name + '_sim_results_with_std.npz')
+            sim_path = os.path.join(directory, sim_name + '_sim_results_with_std.npz')
         else:
-            sim_path = os.path.join(directory, alg_name + '_sim_results.npy')
-        print(f'{alg_name}: {path}, {sim_path}')
+            sim_path = os.path.join(directory, sim_name + '_sim_results.npy')
+        print(f'{sim_name}: intervention={path}, sim={sim_path}')
         if not os.path.exists(path):
             continue  # no algorithm result, skip
         if os.path.exists(sim_path):
@@ -612,13 +639,13 @@ def run_simulation(graph, S, kmax, directory, theta=0.01, num_mc_samples=5000, w
                 graph, S, X, kmax, return_std=True
             )
             np.savez_compressed(
-                os.path.join(directory, alg_name + '_sim_results_with_std'),
+                os.path.join(directory, sim_name + '_sim_results_with_std'),
                 mean=np.asarray(mean_spread, dtype=float),
                 std=np.asarray(std_spread, dtype=float),
             )
         else:
             results = simulation.run_ICN_simulation(graph, S, X, kmax)
-            write_data(directory, alg_name + '_sim_results', results)
+            write_data(directory, sim_name + '_sim_results', results)
 
 def main():
     parser = argparse.ArgumentParser(description='Network Prebunking Problem Experiments')

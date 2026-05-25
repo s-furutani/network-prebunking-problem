@@ -161,8 +161,17 @@ def plot_asymmetric_propagation(alpha, seed_mode='default', show=True):
 # %%
 
 # 使用例
-# plot_seed_sensitivity(seed_mode='nonzero')
-# plot_param_sensitivity(param_profile='q0502_eps0301')
-# plot_asymmetric_propagation(alpha=0.5)
+seed_modes = ['nonzero', 'adversarial']
+for seed_mode in seed_modes:   
+    print('seed_mode:', seed_mode)
+    plot_seed_sensitivity(seed_mode=seed_mode)
+param_profiles = ['q0502_eps0301']
+for param_profile in param_profiles:
+    print('param_profile:', param_profile)
+    plot_param_sensitivity(param_profile=param_profile)
+alphas = [0, 0.5]
+for alpha in alphas:
+    print('alpha:', alpha)
+    plot_asymmetric_propagation(alpha=alpha)
 
 # %%

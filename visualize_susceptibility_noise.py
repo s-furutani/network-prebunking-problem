@@ -177,7 +177,7 @@ plt.tight_layout(rect=[0, 0, SUBPLOT_RIGHT, 1])
 cbar_ax = fig.add_axes([CBAR_LEFT, 0.12, CBAR_WIDTH, 0.76])
 cbar = fig.colorbar(nodes_collection, cax=cbar_ax)
 cbar.set_label(r'$q_{\mathrm{obs}}$', fontsize=CBAR_FONTSIZE)
-cbar.ax.tick_params(labelsize=CBAR_FONTSIZE)
+cbar.ax.tick_params(labelsize=18)
 
 if OUTPUT_PATH:
     os.makedirs(os.path.dirname(OUTPUT_PATH) or '.', exist_ok=True)
